@@ -1,82 +1,176 @@
-import { Layout as DashboardLayout } from "/src/layouts/index.js";
-import { useSettings } from "/src/hooks/use-settings";
-import { useRouter } from "next/router";
-import { ApiGetCall } from "/src/api/ApiCall";
-import CippFormSkeleton from "/src/components/CippFormPages/CippFormSkeleton";
-import CalendarIcon from "@heroicons/react/24/outline/CalendarIcon";
-import { Check, Mail } from "@mui/icons-material";
-import { HeaderedTabbedLayout } from "../../../../../layouts/HeaderedTabbedLayout";
-import tabOptions from "./tabOptions";
-import { CippCopyToClipBoard } from "../../../../../components/CippComponents/CippCopyToClipboard";
-import { Box, Stack } from "@mui/system";
-import Grid from "@mui/material/Grid2";
-import { CippUserInfoCard } from "../../../../../components/CippCards/CippUserInfoCard";
-import { Typography } from "@mui/material";
-import { CippBannerListCard } from "../../../../../components/CippCards/CippBannerListCard";
-import { CippTimeAgo } from "../../../../../components/CippComponents/CippTimeAgo";
-import { useEffect, useState } from "react";
-import { usePopover } from "../../../../../hooks/use-popover";
-import { useDialog } from "../../../../../hooks/use-dialog";
-import { EyeIcon, MagnifyingGlassIcon, TrashIcon } from "@heroicons/react/24/outline";
+import { Layout as DashboardLayout } from '../../../../../layouts/index.js'
+import { useSettings } from '../../../../../hooks/use-settings'
+import { useRouter } from 'next/router'
+import { ApiGetCall, ApiPostCall } from '../../../../../api/ApiCall'
+import CippFormSkeleton from '../../../../../components/CippFormPages/CippFormSkeleton'
+import CalendarIcon from '@heroicons/react/24/outline/CalendarIcon'
 import {
-  Archive,
-  Block,
-  Clear,
-  CloudDone,
-  Edit,
-  Email,
-  ForwardToInbox,
-  GroupAdd,
-  LockOpen,
-  LockPerson,
-  LockReset,
-  MeetingRoom,
-  NoMeetingRoom,
-  Password,
-  PersonOff,
-  PhonelinkLock,
-  PhonelinkSetup,
-  Shortcut,
-} from "@mui/icons-material";
+  AdminPanelSettings,
+  Check,
+  Group,
+  Mail,
+  Fingerprint,
+  Launch,
+  Devices,
+  PersonRemove,
+} from '@mui/icons-material'
+import { HeaderedTabbedLayout } from '../../../../../layouts/HeaderedTabbedLayout'
+import tabOptions from './tabOptions'
+import { CippCopyToClipBoard } from '../../../../../components/CippComponents/CippCopyToClipboard'
+import { Box, Stack } from '@mui/system'
+import { Grid } from '@mui/system'
+import { CippUserInfoCard } from '../../../../../components/CippCards/CippUserInfoCard'
+import { SvgIcon, Typography } from '@mui/material'
+import { CippBannerListCard } from '../../../../../components/CippCards/CippBannerListCard'
+import { CippTimeAgo } from '../../../../../components/CippComponents/CippTimeAgo'
+import { useEffect, useState } from 'react'
+import { useCippUserActions } from '../../../../../components/CippComponents/CippUserActions'
+import { EyeIcon, PencilIcon } from '@heroicons/react/24/outline'
+import { CippDataTable } from '../../../../../components/CippTable/CippDataTable'
+import dynamic from 'next/dynamic'
+const CippMap = dynamic(() => import('../../../../../components/CippComponents/CippMap'), {
+  ssr: false,
+})
+
+import { Button, Dialog, DialogTitle, DialogContent, IconButton } from '@mui/material'
+import { Close } from '@mui/icons-material'
+import { CippPropertyList } from '../../../../../components/CippComponents/CippPropertyList'
+import { CippCodeBlock } from '../../../../../components/CippComponents/CippCodeBlock'
+import { CippHead } from '../../../../../components/CippComponents/CippHead'
+import { usePermissions } from '../../../../../hooks/use-permissions'
+
+const SignInLogsDialog = ({ open, onClose, userId, tenantFilter }) => {
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
+      <DialogTitle sx={{ py: 2 }}>
+        Sign-In Logs
+        <IconButton
+          aria-label="close"
+          onClick={onClose}
+          sx={{ position: 'absolute', right: 8, top: 8 }}
+        >
+          <Close />
+        </IconButton>
+      </DialogTitle>
+      <DialogContent dividers>
+        <CippDataTable
+          noCard={true}
+          title="Sign-In Logs"
+          simpleColumns={[
+            'createdDateTime',
+            'status',
+            'ipAddress',
+            'clientAppUsed',
+            'resourceDisplayName',
+            'status.errorCode',
+            'location',
+          ]}
+          api={{
+            url: '/api/ListUserSigninLogs',
+            data: {
+              UserId: userId,
+              tenantFilter: tenantFilter,
+              top: 50,
+            },
+            queryKey: `ListSignIns-${userId}`,
+          }}
+        />
+      </DialogContent>
+    </Dialog>
+  )
+}
 
 const Page = () => {
-  const popover = usePopover();
-  const createDialog = useDialog();
-  const userSettingsDefaults = useSettings();
-  const router = useRouter();
-  const { userId } = router.query;
-  const [waiting, setWaiting] = useState(false);
+  const userSettingsDefaults = useSettings()
+  const router = useRouter()
+  const { userId } = router.query
+  const [waiting, setWaiting] = useState(false)
+  const [signInLogsDialogOpen, setSignInLogsDialogOpen] = useState(false)
+  const userActions = useCippUserActions()
+  const { checkPermissions } = usePermissions()
+  const canWriteRole = checkPermissions(['Identity.Role.ReadWrite'])
+
   useEffect(() => {
     if (userId) {
-      setWaiting(true);
+      setWaiting(true)
     }
-  }, [userId]);
+  }, [userId])
+
   const userRequest = ApiGetCall({
-    url: `/api/ListUsers?UserId=${userId}&tenantFilter=${userSettingsDefaults.currentTenant}`,
+    url: `/api/ListUsers?UserId=${userId}&tenantFilter=${
+      router.query.tenantFilter ?? userSettingsDefaults.currentTenant
+    }`,
     queryKey: `ListUsers-${userId}`,
     waiting: waiting,
-  });
+  })
 
-  const MFARequest = ApiGetCall({
-    url: "/api/ListGraphRequest",
-    data: {
-      Endpoint: `/users/${userId}/authentication/methods`,
-      tenantFilter: userSettingsDefaults.currentTenant,
-      noPagination: true,
-      $top: 99,
-    },
-    queryKey: `MFA-${userId}`,
-    waiting: waiting,
-  });
+  const userBulkRequest = ApiPostCall({
+    urlFromData: true,
+  })
 
-  const signInLogs = ApiGetCall({
-    url: `/api/ListUserSigninLogs?UserId=${userId}&tenantFilter=${userSettingsDefaults.currentTenant}&top=1`,
-    queryKey: `ListSignIns-${userId}`,
-    waiting: waiting,
-  });
+  function refreshFunction() {
+    const userPrincipalName = userRequest.data?.[0]?.userPrincipalName
+    const requests = [
+      {
+        id: 'userMemberOf',
+        url: `/users/${userId}/memberOf`,
+        method: 'GET',
+      },
+      {
+        id: 'mfaDevices',
+        url: `/users/${userId}/authentication/methods?$top=99`,
+        method: 'GET',
+      },
+      {
+        id: 'signInLogs',
+        url: `/auditLogs/signIns?$filter=(userId eq '${userId}')&$top=1`,
+        method: 'GET',
+      },
+    ]
+
+    // Only add managedDevices request if we have the userPrincipalName
+    if (userPrincipalName) {
+      requests.push({
+        id: 'managedDevices',
+        url: `/deviceManagement/managedDevices?$filter=userPrincipalName eq '${userPrincipalName}'`,
+        method: 'GET',
+      })
+    }
+
+    userBulkRequest.mutate({
+      url: '/api/ListGraphBulkRequest',
+      data: {
+        Requests: requests,
+        tenantFilter: userSettingsDefaults.currentTenant,
+        noPaginateIds: ['signInLogs'],
+      },
+    })
+  }
+
+  useEffect(() => {
+    if (
+      userId &&
+      userSettingsDefaults.currentTenant &&
+      userRequest.isSuccess &&
+      !userBulkRequest.isSuccess
+    ) {
+      refreshFunction()
+    }
+  }, [userId, userSettingsDefaults.currentTenant, userRequest.isSuccess, userBulkRequest.isSuccess])
+
+  const bulkData = userBulkRequest?.data?.data ?? []
+  const signInLogsData = bulkData?.find((item) => item.id === 'signInLogs')
+  const userMemberOfData = bulkData?.find((item) => item.id === 'userMemberOf')
+  const mfaDevicesData = bulkData?.find((item) => item.id === 'mfaDevices')
+  const managedDevicesData = bulkData?.find((item) => item.id === 'managedDevices')
+
+  const signInLogs = signInLogsData?.body?.value || []
+  const userMemberOf = userMemberOfData?.body?.value || []
+  const mfaDevices = mfaDevicesData?.body?.value || []
+  const managedDevices = managedDevicesData?.body?.value || []
 
   // Set the title and subtitle for the layout
-  const title = userRequest.isSuccess ? <>{userRequest.data?.[0]?.displayName}</> : "Loading...";
+  const title = userRequest.isSuccess ? userRequest.data?.[0]?.displayName : 'Loading...'
 
   const subtitle = userRequest.isSuccess
     ? [
@@ -85,61 +179,127 @@ const Page = () => {
           text: <CippCopyToClipBoard type="chip" text={userRequest.data?.[0]?.userPrincipalName} />,
         },
         {
+          icon: <Fingerprint />,
+          text: <CippCopyToClipBoard type="chip" text={userRequest.data?.[0]?.id} />,
+        },
+        {
           icon: <CalendarIcon />,
           text: (
             <>
-              Created <CippTimeAgo data={userRequest.data?.[0]?.createdDateTime} />
+              Created: <CippTimeAgo data={userRequest.data?.[0]?.createdDateTime} />
             </>
           ),
         },
+        {
+          icon: <Launch style={{ color: '#667085' }} />,
+          text: (
+            <Button
+              color="muted"
+              style={{ paddingLeft: 0 }}
+              size="small"
+              href={`https://entra.microsoft.com/${userSettingsDefaults.currentTenant}/#view/Microsoft_AAD_UsersAndTenants/UserProfileMenuBlade/~/overview/userId/${userId}`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              View in Entra
+            </Button>
+          ),
+        },
       ]
-    : [];
+    : []
 
-  const data = userRequest.data?.[0];
+  const data = userRequest.data?.[0]
 
   // Prepare the sign-in log item
-  let signInLogItem = null;
-  let conditionalAccessPoliciesItems = [];
-  let mfaDevicesItems = [];
+  let signInLogItem = null
+  let conditionalAccessPoliciesItems = []
+  let mfaDevicesItems = []
 
-  if (signInLogs.isSuccess && signInLogs.data && signInLogs.data.length > 0) {
-    const signInData = signInLogs.data[0];
+  if (signInLogs.length > 0) {
+    const signInData = signInLogs[0]
 
     signInLogItem = {
       id: 1,
       cardLabelBox: {
         cardLabelBoxHeader: new Date(signInData.createdDateTime).getDate().toString(),
-        cardLabelBoxText: new Date(signInData.createdDateTime).toLocaleString("default", {
-          month: "short",
-          year: "numeric",
+        cardLabelBoxText: new Date(signInData.createdDateTime).toLocaleString('default', {
+          month: 'short',
+          year: 'numeric',
         }),
       },
-      text: `Login ${signInData.status.errorCode === 0 ? "successful" : "failed"} from ${
-        signInData.ipAddress || "unknown location"
+      text: `Login ${signInData.status.errorCode === 0 ? 'successful' : 'failed'} from ${
+        signInData.ipAddress || 'unknown location'
       }`,
-      subtext: `Logged into application ${signInData.resourceDisplayName || "Unknown Application"}`,
-      statusColor: signInData.status.errorCode === 0 ? "success.main" : "error.main",
-      statusText: signInData.status.errorCode === 0 ? "Success" : "Failed",
+      subtext: `Logged into application ${signInData.resourceDisplayName || 'Unknown Application'}`,
+      statusColor: signInData.status.errorCode === 0 ? 'success.main' : 'error.main',
+      statusText: signInData.status.errorCode === 0 ? 'Success' : 'Failed',
+      actionButton: (
+        <Button
+          variant="contained"
+          size="small"
+          onClick={() => setSignInLogsDialogOpen(true)}
+          startIcon={
+            <SvgIcon fontSize="small">
+              <EyeIcon />
+            </SvgIcon>
+          }
+        >
+          More Sign-In Logs
+        </Button>
+      ),
       propertyItems: [
         {
-          label: "Client App Used",
-          value: signInData.clientAppUsed || "N/A",
+          label: 'Client App Used',
+          value: signInData.clientAppUsed || 'N/A',
         },
         {
-          label: "Device Detail",
+          label: 'Device Detail',
           value:
-            signInData.deviceDetail?.operatingSystem || signInData.deviceDetail?.browser || "N/A",
+            signInData.deviceDetail?.operatingSystem || signInData.deviceDetail?.browser || 'N/A',
         },
         {
-          label: "MFA Type used",
-          value: signInData.mfaDetail?.authMethod || "N/A",
+          label: 'MFA Type used',
+          value: signInData.mfaDetail?.authMethod || 'N/A',
         },
         {
-          label: "Additional Details",
-          value: signInData.status?.additionalDetails || "N/A",
+          label: 'Additional Details',
+          value: signInData.status?.additionalDetails || 'N/A',
         },
       ],
-    };
+      children: (
+        <>
+          {signInData?.location && (
+            <>
+              <Typography variant="h6">Location</Typography>
+              <Grid container spacing={2}>
+                <Grid size={8}>
+                  <CippMap
+                    markers={[
+                      {
+                        position: [
+                          signInData.location.geoCoordinates.latitude,
+                          signInData.location.geoCoordinates.longitude,
+                        ],
+                        popup: `${signInData.location.city}, ${signInData.location.state}, ${signInData.location.countryOrRegion}`,
+                      },
+                    ]}
+                  />
+                </Grid>
+                <Grid size={4}>
+                  <CippPropertyList
+                    propertyItems={[
+                      { label: 'City', value: signInData.location.city },
+                      { label: 'State', value: signInData.location.state },
+                      { label: 'Country/Region', value: signInData.location.countryOrRegion },
+                    ]}
+                  />
+                </Grid>
+              </Grid>
+            </>
+          )}
+        </>
+      ),
+    }
 
     // Prepare the conditional access policies items
     if (
@@ -148,44 +308,44 @@ const Page = () => {
     ) {
       // Filter policies where result is "success"
       const appliedPolicies = signInData.appliedConditionalAccessPolicies.filter(
-        (policy) => policy.result === "success"
-      );
+        (policy) => policy.result === 'success'
+      )
 
       if (appliedPolicies.length > 0) {
         conditionalAccessPoliciesItems = appliedPolicies.map((policy) => ({
           id: policy.id,
           cardLabelBox: {
             cardLabelBoxHeader: new Date(signInData.createdDateTime).getDate().toString(),
-            cardLabelBoxText: new Date(signInData.createdDateTime).toLocaleString("default", {
-              month: "short",
-              year: "numeric",
+            cardLabelBoxText: new Date(signInData.createdDateTime).toLocaleString('default', {
+              month: 'short',
+              year: 'numeric',
             }),
           },
           text: policy.displayName,
           subtext: `Policy applied: ${policy.result}`,
-          statusColor: "success.main",
-          statusText: "Applied",
+          statusColor: 'success.main',
+          statusText: 'Applied',
           propertyItems: [
             {
-              label: "Grant Controls",
+              label: 'Grant Controls',
               value:
                 policy.enforcedGrantControls.length > 0
-                  ? policy.enforcedGrantControls.join(", ")
-                  : "None",
+                  ? policy.enforcedGrantControls.join(', ')
+                  : 'None',
             },
             {
-              label: "Session Controls",
+              label: 'Session Controls',
               value:
                 policy.enforcedSessionControls.length > 0
-                  ? policy.enforcedSessionControls.join(", ")
-                  : "None",
+                  ? policy.enforcedSessionControls.join(', ')
+                  : 'None',
             },
             {
-              label: "Conditions Satisfied",
-              value: policy.conditionsSatisfied || "N/A",
+              label: 'Conditions Satisfied',
+              value: policy.conditionsSatisfied || 'N/A',
             },
           ],
-        }));
+        }))
       } else {
         // No applied policies
         conditionalAccessPoliciesItems = [
@@ -193,18 +353,18 @@ const Page = () => {
             id: 1,
             cardLabelBox: {
               cardLabelBoxHeader: new Date(signInData.createdDateTime).getDate().toString(),
-              cardLabelBoxText: new Date(signInData.createdDateTime).toLocaleString("default", {
-                month: "short",
-                year: "numeric",
+              cardLabelBoxText: new Date(signInData.createdDateTime).toLocaleString('default', {
+                month: 'short',
+                year: 'numeric',
               }),
             },
-            text: "No conditional access policies applied",
-            subtext: "No conditional access policies were applied during this sign-in.",
-            statusColor: "warning.main",
-            statusText: "No Policies Applied",
+            text: 'No conditional access policies applied',
+            subtext: 'No conditional access policies were applied during this sign-in.',
+            statusColor: 'warning.main',
+            statusText: 'No Policies Applied',
             propertyItems: [],
           },
-        ];
+        ]
       }
     } else {
       // appliedConditionalAccessPolicies is missing or not an array
@@ -213,431 +373,326 @@ const Page = () => {
           id: 1,
           cardLabelBox: {
             cardLabelBoxHeader: new Date(signInData.createdDateTime).getDate().toString(),
-            cardLabelBoxText: new Date(signInData.createdDateTime).toLocaleString("default", {
-              month: "short",
-              year: "numeric",
+            cardLabelBoxText: new Date(signInData.createdDateTime).toLocaleString('default', {
+              month: 'short',
+              year: 'numeric',
             }),
           },
-          text: "No conditional access policies available",
-          subtext: "No conditional access policies data is available for this sign-in.",
-          statusColor: "warning.main",
-          statusText: "No Data",
+          text: 'No conditional access policies available',
+          subtext: 'No conditional access policies data is available for this sign-in.',
+          statusColor: 'warning.main',
+          statusText: 'No Data',
           propertyItems: [],
         },
-      ];
+      ]
     }
-  } else if (signInLogs.isError) {
+  } else if (signInLogsData?.status !== 200) {
     signInLogItem = {
       id: 1,
-      cardLabelBox: "!",
-      text: "Error loading sign-in logs. Do you have a P1 license?",
-      subtext: signInLogs.error.message,
-      statusColor: "error.main",
-      statusText: "Error",
+      cardLabelBox: '!',
+      text: 'Error loading sign-in logs. Do you have a P1 license?',
+      subtext: signInLogsData?.error?.message || 'Unknown error',
+      statusColor: 'error.main',
+      statusText: 'Error',
       propertyItems: [],
-    };
+    }
 
     // Handle error for conditional access policies
     conditionalAccessPoliciesItems = [
       {
         id: 1,
-        cardLabelBox: "!",
-        text: "Error loading conditional access policies. Do you have a P1 license?",
-        subtext: signInLogs.error.message,
-        statusColor: "error.main",
-        statusText: "Error",
+        cardLabelBox: '!',
+        text: 'Error loading conditional access policies. Do you have a P1 license?',
+        subtext: signInLogsData?.error?.message || 'Unknown error',
+        statusColor: 'error.main',
+        statusText: 'Error',
         propertyItems: [],
       },
-    ];
-  } else if (signInLogs.isSuccess && (!signInLogs.data || signInLogs.data.length === 0)) {
+    ]
+  } else if (signInLogs.length === 0) {
     signInLogItem = {
       id: 1,
-      cardLabelBox: "-",
-      text: "No sign-in logs available",
+      cardLabelBox: '-',
+      text: 'No sign-in logs available',
       subtext:
-        "There are no sign-in logs for this user, or you do not have a P1 license to detect this data.",
-      statusColor: "warning.main",
-      statusText: "No Data",
-      propertyItems: [],
-    };
+        'There are no sign-in logs for this user, or you do not have a P1 license to detect this data.',
+      statusColor: 'warning.main',
+      statusText: 'No Data',
+      propertyItems: [
+        {
+          label: 'Error',
+          value: signInLogsData?.error?.message || 'Unknown error',
+        },
+        {
+          label: 'Inner Error',
+          value: (
+            <CippCodeBlock
+              language="json"
+              code={JSON.stringify(signInLogsData?.error?.innerError, null, 2) || 'Unknown error'}
+            />
+          ),
+        },
+      ],
+    }
 
     conditionalAccessPoliciesItems = [
       {
         id: 1,
-        cardLabelBox: "-",
-        text: "No conditional access policies available",
+        cardLabelBox: '-',
+        text: 'No conditional access policies available',
         subtext:
-          "There are no conditional access policies for this user, or you do not have a P1 license to detect this data.",
-        statusColor: "warning.main",
-        statusText: "No Data",
+          'There are no conditional access policies for this user, or you do not have a P1 license to detect this data.',
+        statusColor: 'warning.main',
+        statusText: 'No Data',
         propertyItems: [],
       },
-    ];
+    ]
   }
 
   // Prepare MFA devices items
-  if (MFARequest.isSuccess && MFARequest.data) {
-    const mfaResults = MFARequest.data.Results || [];
-
+  if (mfaDevices.length > 0) {
     // Exclude password authentication method
-    const mfaDevices = mfaResults.filter(
-      (method) => method["@odata.type"] !== "#microsoft.graph.passwordAuthenticationMethod"
-    );
+    const mfaDevicesFiltered = mfaDevices.filter(
+      (method) => method['@odata.type'] !== '#microsoft.graph.passwordAuthenticationMethod'
+    )
 
-    if (mfaDevices.length > 0) {
-      mfaDevicesItems = mfaDevices.map((device, index) => ({
+    if (mfaDevicesFiltered.length > 0) {
+      mfaDevicesItems = mfaDevicesFiltered.map((device, index) => ({
         id: index,
         cardLabelBox: {
           cardLabelBoxHeader: <Check />,
         },
-        text: device.displayName || "MFA Device",
-        subtext: device.deviceTag || device.clientAppName || "Unknown device",
-        statusColor: "success.main",
-        statusText: "Enabled",
+        text: device.displayName || 'MFA Device',
+        subtext: device.deviceTag || device.clientAppName || 'Unknown device',
+        statusColor: 'success.main',
+        statusText: 'Enabled',
         propertyItems: [
           {
-            label: "Device Name",
-            value: device.displayName || "N/A",
+            label: 'Device Name',
+            value: device.displayName || 'N/A',
           },
           {
-            label: "App Version",
-            value: device.phoneAppVersion || "N/A",
+            label: 'App Version',
+            value: device.phoneAppVersion || 'N/A',
           },
           {
-            label: "Created Date",
+            label: 'Created Date',
             value: device.createdDateTime
               ? new Date(device.createdDateTime).toLocaleString()
-              : "N/A",
+              : 'N/A',
           },
           {
-            label: "Authentication Method",
-            value: device["@odata.type"]?.split(".").pop() || "N/A",
+            label: 'Authentication Method',
+            value: device['@odata.type']?.split('.').pop() || 'N/A',
           },
         ],
-      }));
+      }))
     } else {
       // No MFA devices other than password
       mfaDevicesItems = [
         {
           id: 1,
-          cardLabelBox: "-",
-          text: "No MFA devices available",
-          subtext: "The user does not have any MFA devices registered.",
-          statusColor: "warning.main",
-          statusText: "No Devices",
+          cardLabelBox: '-',
+          text: 'No MFA devices available',
+          subtext: 'The user does not have any MFA devices registered.',
+          statusColor: 'warning.main',
+          statusText: 'No Devices',
           propertyItems: [],
         },
-      ];
+      ]
     }
-  } else if (MFARequest.isError) {
+  } else if (mfaDevicesData?.status !== 200) {
     // Error fetching MFA devices
     mfaDevicesItems = [
       {
         id: 1,
-        cardLabelBox: "!",
-        text: "Error loading MFA devices",
-        subtext: MFARequest.error.message,
-        statusColor: "error.main",
-        statusText: "Error",
-        propertyItems: [],
+        cardLabelBox: '!',
+        text: 'Error loading MFA devices',
+        subtext: `Status code: ${mfaDevicesData?.status}`,
+        statusColor: 'error.main',
+        statusText: 'Error',
+        propertyItems: [
+          {
+            label: 'Error',
+            value: mfaDevicesData?.body?.error?.message || 'Unknown Error',
+          },
+          {
+            label: 'Inner Error',
+            value: (
+              <CippCodeBlock
+                language="json"
+                code={
+                  JSON.stringify(mfaDevicesData?.body?.error?.innerError, null, 2) ||
+                  'Unknown Error'
+                }
+              />
+            ),
+          },
+        ],
       },
-    ];
-  } else if (MFARequest.isSuccess && (!MFARequest.data || !MFARequest.data.Results)) {
+    ]
+  } else if (mfaDevices.length === 0) {
     // No MFA devices data available
     mfaDevicesItems = [
       {
         id: 1,
-        cardLabelBox: "-",
-        text: "No MFA devices available",
-        subtext: "The user does not have any MFA devices registered.",
-        statusColor: "warning.main",
-        statusText: "No Devices",
+        cardLabelBox: '-',
+        text: 'No MFA devices available',
+        subtext: 'The user does not have any MFA devices registered.',
+        statusColor: 'warning.main',
+        statusText: 'No Devices',
         propertyItems: [],
       },
-    ];
+    ]
   }
-  const actions = [
-    {
-      //tested
-      label: "View User",
-      link: "/identity/administration/users/user?userId=[id]",
-      multiPost: false,
-      icon: <EyeIcon />,
-      color: "success",
-    },
-    {
-      //tested
-      label: "Edit User",
-      link: "/identity/administration/users/user/edit?userId=[id]",
-      icon: <Edit />,
-      color: "success",
-      target: "_self",
-    },
-    {
-      //tested
-      label: "Research Compromised Account",
-      type: "GET",
-      icon: <MagnifyingGlassIcon />,
-      link: "/identity/administration/users/user/bec?userId=[id]",
-      confirmText: "Are you sure you want to research this compromised account?",
-      multiPost: false,
-    },
-    {
-      //tested
 
-      label: "Create Temporary Access Password",
-      type: "GET",
-      icon: <Password />,
-      url: "/api/ExecCreateTAP",
-      data: { ID: "userPrincipalName" },
-      confirmText: "Are you sure you want to create a Temporary Access Password?",
-      multiPost: false,
-    },
-    {
-      //tested
-      label: "Rerequire MFA registration",
-      type: "GET",
-      icon: <PhonelinkSetup />,
-      url: "/api/ExecResetMFA",
-      data: { ID: "userPrincipalName" },
-      confirmText: "Are you sure you want to reset MFA for this user?",
-      multiPost: false,
-    },
-    {
-      //tested
-      label: "Send MFA Push",
-      type: "POST",
-      icon: <PhonelinkLock />,
-      url: "/api/ExecSendPush",
-      data: { UserEmail: "userPrincipalName" },
-      confirmText: "Are you sure you want to send an MFA request?",
-      multiPost: false,
-    },
-    {
-      //tested
-      label: "Set Per-User MFA",
-      type: "POST",
-      icon: <LockPerson />,
-      url: "/api/ExecPerUserMFA",
-      data: { userId: "userPrincipalName" },
-      fields: [
+  const groupMembershipItems = userMemberOf
+    ? [
         {
-          type: "autoComplete",
-          name: "State",
-          label: "State",
-          options: [
-            { label: "Enforced", value: "Enforced" },
-            { label: "Enabled", value: "Enabled" },
-            { label: "Disabled", value: "Disabled" },
-          ],
-          multiple: false,
+          id: 1,
+          cardLabelBox: {
+            cardLabelBoxHeader: <Group />,
+          },
+          text: 'Groups',
+          subtext: 'List of groups the user is a member of',
+          statusText: ` ${
+            userMemberOf?.filter((item) => item?.['@odata.type'] === '#microsoft.graph.group')
+              .length
+          } Group(s)`,
+          statusColor: 'info.main',
+          table: {
+            title: 'Group Memberships',
+            hideTitle: true,
+            actions: [
+              {
+                icon: <PencilIcon />,
+                label: 'Edit Group',
+                link: '/identity/administration/groups/edit?groupId=[id]&groupType=[calculatedGroupType]',
+              },
+            ],
+            data: userMemberOf?.filter(
+              (item) => item?.['@odata.type'] === '#microsoft.graph.group'
+            ),
+            refreshFunction: refreshFunction,
+            simpleColumns: ['displayName', 'groupTypes', 'securityEnabled', 'mailEnabled'],
+          },
         },
-      ],
-      confirmText: "Are you sure you want to set per-user MFA for these users?",
-      multiPost: false,
-    },
-    {
-      //tested
-      label: "Convert to Shared Mailbox",
-      type: "GET",
-      icon: <Email />,
-      url: "/api/ExecConvertToSharedMailbox",
-      data: { ID: "userPrincipalName" },
-      confirmText: "Are you sure you want to convert this user to a shared mailbox?",
-      multiPost: false,
-    },
-    {
-      //tested
-      label: "Enable Online Archive",
-      type: "GET",
-      icon: <Archive />,
-      url: "/api/ExecEnableArchive",
-      data: { ID: "userPrincipalName" },
-      confirmText: "Are you sure you want to enable the online archive for this user?",
-      multiPost: false,
-    },
-    {
-      //tested
-      label: "Set Out of Office",
-      type: "POST",
-      icon: <MeetingRoom />,
-      url: "/api/ExecSetOoO",
-      data: {
-        userId: "userPrincipalName",
-        AutoReplyState: { value: "Enabled" },
-      },
-      fields: [{ type: "richText", name: "input", label: "Out of Office Message" }],
-      confirmText: "Are you sure you want to set the out of office?",
-      multiPost: false,
-    },
+      ]
+    : []
 
-    {
-      label: "Disable Out of Office",
-      type: "POST",
-      icon: <NoMeetingRoom />,
-      url: "/api/ExecSetOoO",
-      data: { user: "userPrincipalName", AutoReplyState: "Disabled" },
-      confirmText: "Are you sure you want to disable the out of office?",
-      multiPost: false,
-    },
-    {
-      label: "Add to Group",
-      type: "POST",
-      icon: <GroupAdd />,
-      url: "/api/EditGroup",
-      data: { addMember: "userPrincipalName" },
-      fields: [
+  const roleMembershipItems = userMemberOf
+    ? [
         {
-          type: "autoComplete",
-          name: "groupId",
-          label: "Select a group to add the user to",
-          multiple: false,
-          creatable: false,
-          api: {
-            url: "/api/ListGroups",
-            labelField: "displayName",
-            valueField: "id",
-            addedField: {
-              groupType: "calculatedGroupType",
-              groupName: "displayName",
+          id: 1,
+          cardLabelBox: {
+            cardLabelBoxHeader: <AdminPanelSettings />,
+          },
+          text: 'Admin Roles',
+          subtext: 'List of roles the user is a member of',
+          statusText: ` ${
+            userMemberOf?.filter(
+              (item) => item?.['@odata.type'] === '#microsoft.graph.directoryRole'
+            ).length
+          } Role(s)`,
+          statusColor: 'info.main',
+          table: {
+            title: 'Admin Roles',
+            hideTitle: true,
+            actions: [
+              {
+                label: 'Remove from Role',
+                type: 'POST',
+                icon: <PersonRemove />,
+                url: '/api/ExecRemoveAdminRole',
+                data: {
+                  RoleId: 'id',
+                  RoleName: 'displayName',
+                  Users: 'Users',
+                },
+                confirmText: 'Are you sure you want to remove this user from [displayName]?',
+                allowResubmit: true,
+                onSuccess: refreshFunction,
+                condition: (row) => canWriteRole && !!row?.id,
+              },
+            ],
+            data: userMemberOf
+              ?.filter((item) => item?.['@odata.type'] === '#microsoft.graph.directoryRole')
+              .map((role) => ({
+                ...role,
+                Users: [
+                  {
+                    value: userRequest.data?.[0]?.id ?? userId,
+                    label:
+                      userRequest.data?.[0]?.userPrincipalName ??
+                      userRequest.data?.[0]?.displayName ??
+                      userId,
+                  },
+                ],
+              })),
+            simpleColumns: ['displayName', 'description'],
+            refreshFunction: refreshFunction,
+          },
+        },
+      ]
+    : []
+
+  const ownedDevicesItems =
+    managedDevices.length > 0
+      ? [
+          {
+            id: 1,
+            cardLabelBox: {
+              cardLabelBoxHeader: <Devices />,
             },
-            queryKey: `groups-${userSettingsDefaults.currentTenant}}`,
+            text: 'Managed Devices',
+            subtext: 'List of devices managed for this user',
+            statusText: `${managedDevices.length} Device(s)`,
+            statusColor: 'info.main',
+            table: {
+              title: 'Managed Devices',
+              hideTitle: true,
+              data: managedDevices,
+              refreshFunction: refreshFunction,
+              simpleColumns: ['deviceName', 'operatingSystem', 'osVersion', 'managementType'],
+              actions: [
+                {
+                  icon: <EyeIcon />,
+                  label: 'View Device',
+                  link: `/endpoint/MEM/devices/device?deviceId=[id]&tenantFilter=${userSettingsDefaults.currentTenant}`,
+                },
+              ],
+            },
           },
-        },
-      ],
-      confirmText: "Are you sure you want to add the user to this group?",
-    },
-    {
-      label: "Disable Email Forwarding",
-      type: "POST",
-      url: "/api/ExecEmailForward",
-      icon: <ForwardToInbox />,
-      data: {
-        username: "userPrincipalName",
-        userid: "userPrincipalName",
-        ForwardOption: "!disabled",
-      },
-      confirmText: "Are you sure you want to disable forwarding of this user's emails?",
-      multiPost: false,
-    },
-    {
-      label: "Pre-provision OneDrive",
-      type: "POST",
-      icon: <CloudDone />,
-      url: "/api/ExecOneDriveProvision",
-      data: { UserPrincipalName: "userPrincipalName" },
-      confirmText: "Are you sure you want to pre-provision OneDrive for this user?",
-      multiPost: false,
-    },
-    {
-      label: "Add OneDrive Shortcut",
-      type: "POST",
-      icon: <Shortcut />,
-      url: "/api/ExecOneDriveShortCut",
-      data: {
-        username: "userPrincipalName",
-        userid: "id",
-      },
-      fields: [
-        {
-          type: "autoComplete",
-          name: "siteUrl",
-          label: "Select a Site",
-          multiple: false,
-          creatable: false,
-          api: {
-            url: "/api/ListSites",
-            data: { type: "SharePointSiteUsage", URLOnly: true },
-            labelField: "webUrl",
-            valueField: "webUrl",
-            queryKey: `sharepointSites-${userSettingsDefaults.currentTenant}}`,
-          },
-        },
-      ],
-      confirmText: "Select a SharePoint site to create a shortcut for:",
-      multiPost: false,
-    },
-    {
-      label: "Block Sign In",
-      type: "GET",
-      icon: <Block />,
-      url: "/api/ExecDisableUser",
-      data: { ID: "id" },
-      confirmText: "Are you sure you want to block the sign-in for this user?",
-      multiPost: false,
-    },
-    {
-      label: "Unblock Sign In",
-      type: "GET",
-      icon: <LockOpen />,
-      url: "/api/ExecDisableUser",
-      data: { ID: "id", Enable: true },
-      confirmText: "Are you sure you want to unblock sign-in for this user?",
-      multiPost: false,
-    },
-    {
-      label: "Reset Password (Must Change)",
-      type: "GET",
-      icon: <LockReset />,
-      url: "/api/ExecResetPass",
-      data: {
-        MustChange: true,
-        ID: "userPrincipalName",
-        displayName: "displayName",
-      },
-      confirmText:
-        "Are you sure you want to reset the password for this user? The user must change their password at next logon.",
-      multiPost: false,
-    },
-    {
-      label: "Reset Password",
-      type: "GET",
-      icon: <LockReset />,
-      url: "/api/ExecResetPass",
-      data: {
-        MustChange: false,
-        ID: "userPrincipalName",
-        displayName: "displayName",
-      },
-      confirmText: "Are you sure you want to reset the password for this user?",
-      multiPost: false,
-    },
-    {
-      label: "Clear Immutable ID",
-      type: "GET",
-      icon: <Clear />,
-      url: "/api/ExecClrImmId",
-      data: {
-        ID: "id",
-      },
-      confirmText: "Are you sure you want to clear the Immutable ID for this user?",
-      multiPost: false,
-    },
-    {
-      label: "Revoke all user sessions",
-      type: "GET",
-      icon: <PersonOff />,
-      url: "/api/ExecRevokeSessions",
-      data: { ID: "id", Username: "userPrincipalName" },
-      confirmText: "Are you sure you want to revoke all sessions for this user?",
-      multiPost: false,
-    },
-    {
-      label: "Delete User",
-      type: "GET",
-      icon: <TrashIcon />,
-      url: "/api/RemoveUser",
-      data: { ID: "id" },
-      confirmText: "Are you sure you want to delete this user?",
-      multiPost: false,
-    },
-  ];
+        ]
+      : managedDevicesData?.status !== 200
+        ? [
+            {
+              id: 1,
+              cardLabelBox: '!',
+              text: 'Error loading devices',
+              subtext: managedDevicesData?.error?.message || 'Unknown error',
+              statusColor: 'error.main',
+              statusText: 'Error',
+              propertyItems: [],
+            },
+          ]
+        : [
+            {
+              id: 1,
+              cardLabelBox: '-',
+              text: 'No devices',
+              subtext: 'This user does not have any managed devices.',
+              statusColor: 'warning.main',
+              statusText: 'No Devices',
+              propertyItems: [],
+            },
+          ]
 
   return (
     <HeaderedTabbedLayout
       tabOptions={tabOptions}
       title={title}
-      actions={actions}
+      actions={userActions}
       actionsData={data}
       subtitle={subtitle}
       isFetching={userRequest.isLoading}
@@ -650,43 +705,67 @@ const Page = () => {
             py: 4,
           }}
         >
+          <CippHead title={title} />
           <Grid container spacing={2}>
-            <Grid item size={4}>
+            <Grid size={4}>
               <CippUserInfoCard
                 user={data}
                 tenant={userSettingsDefaults.currentTenant}
                 isFetching={userRequest.isLoading}
               />
             </Grid>
-            <Grid item size={8}>
+            <Grid size={8}>
               <Stack spacing={3}>
                 <Typography variant="h6">Latest Logon</Typography>
                 <CippBannerListCard
-                  isFetching={signInLogs.isLoading}
+                  isFetching={userBulkRequest.isPending}
                   items={signInLogItem ? [signInLogItem] : []}
                   isCollapsible={signInLogItem ? true : false}
                 />
                 <Typography variant="h6">Applied Conditional Access Policies</Typography>
                 <CippBannerListCard
-                  isFetching={signInLogs.isLoading}
+                  isFetching={userBulkRequest.isPending}
                   items={conditionalAccessPoliciesItems}
                   isCollapsible={conditionalAccessPoliciesItems.length > 0 ? true : false}
                 />
                 <Typography variant="h6">Multi-Factor Authentication Devices</Typography>
                 <CippBannerListCard
-                  isFetching={MFARequest.isLoading}
+                  isFetching={userBulkRequest.isPending}
                   items={mfaDevicesItems}
                   isCollapsible={mfaDevicesItems.length > 0 ? true : false}
+                />
+                <Typography variant="h6">Memberships</Typography>
+                <CippBannerListCard
+                  isFetching={userBulkRequest.isPending}
+                  items={groupMembershipItems}
+                  isCollapsible={true}
+                />
+                <CippBannerListCard
+                  isFetching={userBulkRequest.isPending}
+                  items={roleMembershipItems}
+                  isCollapsible={true}
+                />
+                <Typography variant="h6">Managed Devices</Typography>
+                <CippBannerListCard
+                  isFetching={userBulkRequest.isPending}
+                  items={ownedDevicesItems}
+                  isCollapsible={true}
                 />
               </Stack>
             </Grid>
           </Grid>
         </Box>
       )}
+      <SignInLogsDialog
+        open={signInLogsDialogOpen}
+        onClose={() => setSignInLogsDialogOpen(false)}
+        userId={userId}
+        tenantFilter={userSettingsDefaults.currentTenant}
+      />
     </HeaderedTabbedLayout>
-  );
-};
+  )
+}
 
-Page.getLayout = (page) => <DashboardLayout>{page}</DashboardLayout>;
+Page.getLayout = (page) => <DashboardLayout>{page}</DashboardLayout>
 
-export default Page;
+export default Page
